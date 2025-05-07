@@ -62,17 +62,20 @@ def parse_right(tree):
 
 def parse_refal(tree):
     ir = {}
-    for rule in tree:
-        match rule:
-            case ast.Assign([ast.Subscript(ast.Name(name), left)], right):
-                left, right = parse_left(left), parse_right(right)
-            case ast.Assign([ast.Name(name)], right):
-                left, right = (), parse_right(right)
-            case _:
-                raise SyntaxError(ast.unparse(rule))
-        if name not in ir:
-            ir[name] = []
-        ir[name].append((left, right))
+    for rules in tree:
+        for rule in rules[1]:
+            match rule:
+                case ast.Expr(ast.Constant(docs)):
+                    name, left, right = rules[0], ('docs', docs), ()
+                case ast.Assign([ast.Subscript(ast.Name(name), left)], right):
+                    left, right = parse_left(left), parse_right(right)
+                case ast.Assign([ast.Name(name)], right):
+                    left, right = (), parse_right(right)
+                case _:
+                    raise SyntaxError(ast.unparse(rule))
+            if name not in ir:
+                ir[name] = []
+            ir[name].append((left, right))
     return ir
 
 
@@ -83,9 +86,15 @@ def compile_refal(ir):
     return funcs
 
 
-def refal(imports=None):
+def refal(imports=None, modules=None):
     def deco(f):
+        rules = []
+        for module in modules or []:
+            module_tree = ast.parse(inspect.getsource(module))
+            rules.append((module_tree.body[0].name, module_tree.body[0].body))
         tree = ast.parse(inspect.getsource(f))
-        o = Refal(tree.body[0].body, imports or {})
+        rules.append((tree.body[0].name, tree.body[0].body))
+        o = Refal(rules, imports or {})
         return lambda *args: run_func(o.funcs, *args) if args else o
     return deco
+
